@@ -11,7 +11,6 @@ ARQUIVO_SINAIS = “sinais_enviados.txt”
 
 def enviar_telegram(msg):
 if not BOT_TOKEN or not CHAT_ID:
-print(“BOT_TOKEN ou CHAT_ID não configurados”)
 return
 
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -113,10 +112,10 @@ try:
     )
     data = r.json()
     if "symbols" not in data:
-        print("Resposta inesperada Binance:")
+        print("Resposta Binance:")
         print(data)
         enviar_telegram(
-            f"⚠️ Binance retornou erro:\n{str(data)[:300]}"
+            f"⚠️ Binance erro:\n{str(data)[:300]}"
         )
         return []
     moedas = []
@@ -130,7 +129,7 @@ try:
 except Exception as e:
     print(f"Erro obter_moedas: {e}")
     enviar_telegram(
-        f"⚠️ Falha ao obter moedas:\n{e}"
+        f"⚠️ Falha obter moedas:\n{e}"
     )
     return []
 
@@ -150,8 +149,8 @@ def analisar():
 
 enviados = carregar_enviados()
 moedas = obter_moedas()
-if len(moedas) == 0:
-    print("Nenhuma moeda encontrada.")
+if not moedas:
+    print("Nenhuma moeda encontrada")
     time.sleep(300)
     return
 print(f"Analisando {len(moedas)} moedas")
@@ -202,6 +201,6 @@ while True:
     except Exception as e:
         print(f"Erro geral: {e}")
         enviar_telegram(
-            f"⚠️ Erro geral do bot:\n{e}"
+            f"⚠️ Erro geral:\n{e}"
         )
         time.sleep(30
