@@ -44,7 +44,7 @@ def calcular_rsi(df, periodo=14):
 
 def obter_klines(symbol):
     url = (
-        f"https://api.binance.com/api/v3/klines"
+        f"https://data-api.binance.vision/api/v3/klines"
         f"?symbol={symbol}&interval=1h&limit=200"
     )
 
@@ -133,7 +133,7 @@ def score_moeda(df):
 
 
 def obter_moedas():
-    url = "https://api.binance.com/api/v3/exchangeInfo"
+    url = "https://data-api.binance.vision/api/v3/exchangeInfo"
 
     try:
         r = requests.get(
@@ -236,7 +236,7 @@ def analisar():
 
                 print(f"Sinal enviado: {symbol}")
 
-            time.sleep(0.2)
+            time.sleep(0.5)
 
         except Exception as e:
             print(f"Erro em {symbol}: {e}")
@@ -244,6 +244,9 @@ def analisar():
 
 
 if __name__ == "__main__":
+
+    print("BOT_TOKEN:", BOT_TOKEN is not None)
+    print("CHAT_ID:", CHAT_ID is not None)
 
     enviar_telegram(
         "🤖 Bot de projeções iniciado com sucesso."
@@ -265,3 +268,4 @@ if __name__ == "__main__":
             )
 
             time.sleep(30)
+`
