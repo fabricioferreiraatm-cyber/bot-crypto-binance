@@ -4,203 +4,264 @@ import time
 import os
 from datetime import datetime
 
-BOT_TOKEN = os.getenv(“BOT_TOKEN”)
-CHAT_ID = os.getenv(“CHAT_ID”)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-ARQUIVO_SINAIS = “sinais_enviados.txt”
+ARQUIVO_SINAIS = "sinais_enviados.txt"
+
 
 def enviar_telegram(msg):
-if not BOT_TOKEN or not CHAT_ID:
-return
+    if not BOT_TOKEN or not CHAT_ID:
+        return
 
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-payload = {
-    "chat_id": CHAT_ID,
-    "text": msg,
-    "parse_mode": "HTML"
-}
-try:
-    requests.post(url, json=payload, timeout=15)
-except Exception as e:
-    print(f"Erro Telegram: {e}")
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": msg,
+        "parse_mode": "HTML"
+    }
+
+    try:
+        requests.post(url, json=payload, timeout=15)
+    except Exception as e:
+        print(f"Erro Telegram: {e}")
+
 
 def calcular_rsi(df, periodo=14):
-delta = df[“close”].diff()
+    delta = df["close"].diff()
 
-ganho = delta.where(delta > 0, 0)
-perda = -delta.where(delta < 0, 0)
-media_ganho = ganho.rolling(periodo).mean()
-media_perda = perda.rolling(periodo).mean()
-rs = media_ganho / media_perda
-return 100 - (100 / (1 + rs))
+    ganho = delta.where(delta > 0, 0)
+    perda = -delta.where(delta < 0, 0)
+
+    media_ganho = ganho.rolling(periodo).mean()
+    media_perda = perda.rolling(periodo).mean()
+
+    rs = media_ganho / media_perda
+
+    return 100 - (100 / (1 + rs))
+
 
 def obter_klines(symbol):
-
-url = (
-    f"https://api.binance.com/api/v3/klines"
-    f"?symbol={symbol}&interval=1h&limit=200"
-)
-try:
-    r = requests.get(
-        url,
-        timeout=20,
-        headers={"User-Agent": "Mozilla/5.0"}
+    url = (
+        f"https://api.binance.com/api/v3/klines"
+        f"?symbol={symbol}&interval=1h&limit=200"
     )
-    r.raise_for_status()
-    dados = r.json()
-    if not isinstance(dados, list):
+
+    try:
+        r = requests.get(
+            url,
+            timeout=20,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+
+        r.raise_for_status()
+
+        dados = r.json()
+
+        if not isinstance(dados, list):
+            return None
+
+        if len(dados) < 50:
+            return None
+
+        df = pd.DataFrame(dados)
+
+        df = df.iloc[:, :6]
+
+        df.columns = [
+            "time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+        ]
+
+        df["close"] = df["close"].astype(float)
+        df["volume"] = df["volume"].astype(float)
+
+        return df
+
+    except Exception as e:
+        print(f"Erro em {symbol}: {e}")
         return None
-    if len(dados) < 50:
-        return None
-    df = pd.DataFrame(dados)
-    df = df.iloc[:, :6]
-    df.columns = [
-        "time",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume"
-    ]
-    df["close"] = df["close"].astype(float)
-    df["volume"] = df["volume"].astype(float)
-    return df
-except Exception as e:
-    print(f"Erro em {symbol}: {e}")
-    return None
+
 
 def score_moeda(df):
+    score = 0
 
-score = 0
-close = df["close"].iloc[-1]
-ema20 = df["close"].ewm(span=20).mean().iloc[-1]
-ema50 = df["close"].ewm(span=50).mean().iloc[-1]
-rsi = calcular_rsi(df).iloc[-1]
-volume_atual = df["volume"].tail(24).mean()
-volume_antigo = df["volume"].tail(168).mean()
-if volume_atual > volume_antigo * 2:
-    score += 30
-if close > ema20:
-    score += 15
-if close > ema50:
-    score += 15
-if ema20 > ema50:
-    score += 10
-if 50 <= rsi <= 70:
-    score += 20
-variacao = (
-    (close - df["close"].iloc[-24])
-    / df["close"].iloc[-24]
-) * 100
-if 0 < variacao < 10:
-    score += 10
-return {
-    "score": score,
-    "close": round(close, 8),
-    "rsi": round(rsi, 2),
-    "variacao": round(variacao, 2)
-}
+    close = df["close"].iloc[-1]
+
+    ema20 = df["close"].ewm(span=20).mean().iloc[-1]
+    ema50 = df["close"].ewm(span=50).mean().iloc[-1]
+
+    rsi = calcular_rsi(df).iloc[-1]
+
+    volume_atual = df["volume"].tail(24).mean()
+    volume_antigo = df["volume"].tail(168).mean()
+
+    if volume_atual > volume_antigo * 2:
+        score += 30
+
+    if close > ema20:
+        score += 15
+
+    if close > ema50:
+        score += 15
+
+    if ema20 > ema50:
+        score += 10
+
+    if 50 <= rsi <= 70:
+        score += 20
+
+    variacao = (
+        (close - df["close"].iloc[-24])
+        / df["close"].iloc[-24]
+    ) * 100
+
+    if 0 < variacao < 10:
+        score += 10
+
+    return {
+        "score": score,
+        "close": round(close, 8),
+        "rsi": round(rsi, 2),
+        "variacao": round(variacao, 2)
+    }
+
 
 def obter_moedas():
+    url = "https://api.binance.com/api/v3/exchangeInfo"
 
-url = "https://api.binance.com/api/v3/exchangeInfo"
-try:
-    r = requests.get(
-        url,
-        timeout=20,
-        headers={"User-Agent": "Mozilla/5.0"}
-    )
-    data = r.json()
-    if "symbols" not in data:
-        print("Resposta Binance:")
-        print(data)
-        enviar_telegram(
-            f"⚠️ Binance erro:\n{str(data)[:300]}"
+    try:
+        r = requests.get(
+            url,
+            timeout=20,
+            headers={"User-Agent": "Mozilla/5.0"}
         )
+
+        data = r.json()
+
+        if "symbols" not in data:
+            print("Resposta Binance:")
+            print(data)
+
+            enviar_telegram(
+                f"⚠️ Binance erro:\n{str(data)[:300]}"
+            )
+
+            return []
+
+        moedas = []
+
+        for s in data["symbols"]:
+            if (
+                s.get("quoteAsset") == "USDT"
+                and s.get("status") == "TRADING"
+            ):
+                moedas.append(s["symbol"])
+
+        return moedas
+
+    except Exception as e:
+        print(f"Erro obter_moedas: {e}")
+
+        enviar_telegram(
+            f"⚠️ Falha obter moedas:\n{e}"
+        )
+
         return []
-    moedas = []
-    for s in data["symbols"]:
-        if (
-            s.get("quoteAsset") == "USDT"
-            and s.get("status") == "TRADING"
-        ):
-            moedas.append(s["symbol"])
-    return moedas
-except Exception as e:
-    print(f"Erro obter_moedas: {e}")
-    enviar_telegram(
-        f"⚠️ Falha obter moedas:\n{e}"
-    )
-    return []
+
 
 def carregar_enviados():
+    if not os.path.exists(ARQUIVO_SINAIS):
+        return set()
 
-if not os.path.exists(ARQUIVO_SINAIS):
-    return set()
-with open(ARQUIVO_SINAIS, "r") as f:
-    return set(f.read().splitlines())
+    with open(ARQUIVO_SINAIS, "r") as f:
+        return set(f.read().splitlines())
+
 
 def salvar_sinal(symbol):
+    with open(ARQUIVO_SINAIS, "a") as f:
+        f.write(symbol + "\n")
 
-with open(ARQUIVO_SINAIS, "a") as f:
-    f.write(symbol + "\n")
 
 def analisar():
+    enviados = carregar_enviados()
 
-enviados = carregar_enviados()
-moedas = obter_moedas()
-if not moedas:
-    print("Nenhuma moeda encontrada")
-    time.sleep(300)
-    return
-print(f"Analisando {len(moedas)} moedas")
-for symbol in moedas:
-    try:
-        df = obter_klines(symbol)
-        if df is None:
-            continue
-        resultado = score_moeda(df)
-        if resultado["score"] >= 75:
-            if symbol in enviados:
+    moedas = obter_moedas()
+
+    if not moedas:
+        print("Nenhuma moeda encontrada")
+        time.sleep(300)
+        return
+
+    print(f"Analisando {len(moedas)} moedas")
+
+    for symbol in moedas:
+        try:
+            df = obter_klines(symbol)
+
+            if df is None:
                 continue
-            mensagem = f"""
 
+            resultado = score_moeda(df)
+
+            if resultado["score"] >= 75:
+
+                if symbol in enviados:
+                    continue
+
+                mensagem = f"""
 🚀 POSSÍVEL OPORTUNIDADE
 
 🪙 Moeda: {symbol}
 
-💰 Preço: {resultado[‘close’]}
+💰 Preço: {resultado['close']}
 
-📈 RSI: {resultado[‘rsi’]}
+📈 RSI: {resultado['rsi']}
 
-🔥 Variação 24h: {resultado[‘variacao’]}%
+🔥 Variação 24h: {resultado['variacao']}%
 
-🎯 Score: {resultado[‘score’]}/100
+🎯 Score: {resultado['score']}/100
 
-⏰ {datetime.now().strftime(’%d/%m/%Y %H:%M’)}
-“””
+⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}
+"""
 
-            enviar_telegram(mensagem)
-            salvar_sinal(symbol)
-            print(f"Sinal enviado: {symbol}")
-        time.sleep(0.2)
-    except Exception as e:
-        print(f"Erro em {symbol}: {e}")
-        continue
+                enviar_telegram(mensagem)
 
-if name == “main”:
+                salvar_sinal(symbol)
 
-enviar_telegram(
-    "🤖 Bot de projeções iniciado com sucesso."
-)
-while True:
-    try:
-        analisar()
-        print("Nova análise em 30 minutos")
-        time.sleep(1800)
-    except Exception as e:
-        print(f"Erro geral: {e}")
-        enviar_telegram(
-            f"⚠️ Erro geral:\n{e}"
-        )
-        time.sleep(30
+                print(f"Sinal enviado: {symbol}")
+
+            time.sleep(0.2)
+
+        except Exception as e:
+            print(f"Erro em {symbol}: {e}")
+            continue
+
+
+if __name__ == "__main__":
+
+    enviar_telegram(
+        "🤖 Bot de projeções iniciado com sucesso."
+    )
+
+    while True:
+        try:
+            analisar()
+
+            print("Nova análise em 30 minutos")
+
+            time.sleep(1800)
+
+        except Exception as e:
+            print(f"Erro geral: {e}")
+
+            enviar_telegram(
+                f"⚠️ Erro geral:\n{e}"
+            )
+
+            time.sleep(30)
